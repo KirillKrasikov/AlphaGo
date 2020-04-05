@@ -3,7 +3,6 @@
 """
 import enum
 from collections import namedtuple
-from typing import List
 
 
 class Player(enum.Enum):
@@ -14,11 +13,12 @@ class Player(enum.Enum):
     white = 2
 
     @property
-    def other(self) -> enum.Enum:
+    def other(self):
         """Other opponent color
 
         Returns:
             integer value of the opponent color
+
         """
         return Player.black if self == Player.white else Player.white
 
@@ -27,7 +27,7 @@ class Point(namedtuple('Point', 'row col')):
     """Board coordinates represented in the form of tuples
 
     """
-    def neighbors(self) -> List[namedtuple]:
+    def neighbors(self):
         """Points surrounding the current instance
 
         Returns:

@@ -13,6 +13,7 @@ def is_point_an_eye(board, point, color):
         color:
 
     Returns:
+        Move
 
     """
     if board.get(point) is not None:  # eye is a empty point
@@ -29,10 +30,10 @@ def is_point_an_eye(board, point, color):
     off_board_corners = 0
 
     corners = [
-        Point(point.row - point.col - 1),
-        Point(point.row - point.col + 1),
-        Point(point.row + point.col - 1),
-        Point(point.row + point.col + 1),
+        Point(point.row - 1, point.col - 1),
+        Point(point.row - 1, point.col + 1),
+        Point(point.row + 1, point.col - 1),
+        Point(point.row + 1, point.col + 1),
     ]
 
     for corner in corners:

@@ -4,9 +4,10 @@
 import copy
 
 from dlgo.gotypes import Player
+from dlgo import zobrist
 
 
-class Move:
+class Move():
     """A move means placing a stone on a board, skipping a move or quitting a game
 
     Args:
@@ -35,7 +36,7 @@ class Move:
             point:
 
         Returns:
-            Move instance
+            Move
 
         """
         return Move(point=point)
@@ -72,32 +73,36 @@ class GoString:
     """
     def __init__(self, color, stones, liberties):
         self.color = color
-        self.stones = set(stones)
-        self.liberties = set(liberties)
+        self.stones = frozenset(stones)
+        self.liberties = frozenset(liberties)
 
-    def remove_liberty(self, point) -> None:
-        """Remove liberty
-
-        Args:
-            point:
-
-        Returns:
-            None
-
-        """
-        self.liberties.remove(point)
-
-    def add_liberty(self, point) -> None:
-        """Add liberty
+    def without_liberty(self, point):
+        """Fixed state accounting
 
         Args:
             point:
 
         Returns:
-            None
+            GoString instance
 
         """
-        self.liberties.add(point)
+        new_liberties = self.liberties - set([point])
+
+        return GoString(self.color, self.stones, new_liberties)
+
+    def with_liberty(self, point):
+        """Fixed state accounting
+
+        Args:
+            point:
+
+        Returns:
+            GoString instance
+
+        """
+        new_liberties = self.liberties | set([point])
+
+        return GoString(self.color, self.stones, new_liberties)
 
     def merge_with(self, go_string):
         """Merge two stones strings
@@ -119,7 +124,7 @@ class GoString:
         )
 
     @property
-    def num_liberties(self):
+    def num_liberties(self) -> int:
         """Degrees of liberties
 
         Returns:
@@ -149,11 +154,16 @@ class GoString:
 class Board():
     """Board is initialized as an empty grid consisting of a given number of rows and columns
 
+    Args:
+        num_rows:
+        num_cols:
+
     """
     def __init__(self, num_rows, num_cols):
         self.num_rows = num_rows
         self.num_cols = num_cols
         self._grid = {}
+        self._hash = zobrist.EMPTY_BOARD
 
     def place_stone(self, player, point):
         """Checking the degrees of liberties numbers for neighboring points
@@ -189,20 +199,35 @@ class Board():
 
         new_string = GoString(player, [point], liberties)
 
-        # Union all adjacent stones of the same colo
+        # Union all adjacent stones of the same color
         for same_color_string in adjacent_same_color:
             new_string = new_string.merge_with(same_color_string)
 
         for new_string_point in new_string.stones:
             self._grid[new_string_point] = new_string
 
+        self._hash ^= zobrist.HASH_CODE[point, player]
+
         # Decline number of degrees of freedom of neighboring chains of stones of the same color
         for other_color_string in adjacent_opposite_color:
-            other_color_string.remove_liberty(point)
-
-        for other_color_string in adjacent_opposite_color:
-            if other_color_string.num_liberties == 0:
+            replacement = other_color_string.without_liberty(point)
+            if replacement.num_liberties:
+                self._replace_string(other_color_string.without_liberty(point))
+            else:
                 self._remove_string(other_color_string)
+
+    def _replace_string(self, new_string):
+        """Board grid update
+
+        Args:
+            new_string:
+
+        Returns:
+            None
+
+        """
+        for point in new_string.stones:
+            self._grid[point] = new_string
 
     def is_on_grid(self, point):
         """Check if a point is on the board
@@ -211,7 +236,7 @@ class Board():
             point:
 
         Returns:
-            True if point is on grid else False
+            True if point on the board else False
 
         """
         return 1 <= point.row <= self.num_rows and \
@@ -225,7 +250,6 @@ class Board():
 
         Returns:
             information about the player if there is a stone, otherwise None
-
         """
         string = self._grid.get(point)
 
@@ -238,14 +262,14 @@ class Board():
             point:
 
         Returns:
-            whole chain of stones if there is a stone at this point, otherwise None
+            Whole chain of stones if there is a stone at this point, otherwise None
 
         """
         string = self._grid.get(point)
 
         return None if string is None else string
 
-    def _remove_string(self, string) -> None:
+    def _remove_string(self, string):
         """Stone string removal
 
         Args:
@@ -262,25 +286,42 @@ class Board():
                     continue
 
                 if neighbor_string is not string:
-                    neighbor_string.add_liberty(point)
+                    self._replace_string(neighbor_string.with_liberty(point))
 
             self._grid[point] = None
+
+            self._hash ^= zobrist.HASH_CODE[point, string.color]
+
+    def zobrist_hash(self):
+        """Current board hash
+
+        Returns:
+            Zobrist hash
+
+        """
+        return self._hash
 
 
 class GameState:
     """Game state fixation
 
     Args:
-        board:
-        next_player:
-        previous:
-        move:
+        board: fixme
+        next_player: fixme
+        previous: fixme
+        move: fixme
 
     """
     def __init__(self, board, next_player, previous, move):
         self.board = board
         self.next_player = next_player
         self.previous_state = previous
+        if self.previous_state is None:
+            self.previous_states = frozenset()
+        else:
+            self.previous_states = frozenset(
+                previous.previous_states |
+                {(previous.next_player, previous.board.zobrist_hash())})
         self.last_move = move
 
     def apply_move(self, move):
@@ -309,7 +350,7 @@ class GameState:
             board_size:
 
         Returns:
-            new GameState instance
+            New game state instance
 
         """
         if isinstance(board_size, int):
@@ -383,16 +424,9 @@ class GameState:
 
         next_board = copy.deepcopy(self.board)
         next_board.place_stone(player, move.point)
-        next_situation = (player.other, next_board)
-        past_state = self.previous_state
+        next_situation = (player.other, next_board.zobrist_hash())
 
-        while past_state is not None:
-            if past_state.situation == next_situation:
-                return True
-
-            past_state = past_state.previous_state
-
-        return False
+        return next_situation in self.previous_states
 
     def is_valid_move(self, move):
         """Check move for current game state
