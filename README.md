@@ -3,7 +3,7 @@ DeepMind | AlphaGo replication
 
 ### Work plan
 - [X] Naive bot
-- [ ] Monte-Carlo
+- [X] Monte-Carlo
 - [ ] Supervised learning
 - [ ] Gradient policy
 - [ ] Q-learning
